@@ -1,0 +1,175 @@
+# WBC Transfer Evaluation
+
+**Adaptation-free external evaluation of retinal- and ImageNet-pretrained white blood cell classifiers**
+
+This repository supports the revised study:
+
+> *Evaluating Cross-Domain Transfer and Adaptation-Free External Generalization of Retinal- and ImageNet-Pretrained Models for White Blood Cell Classification* (Applied Sciences, manuscript `applsci-4726214`).
+
+The study compares **ResNet-50**, **ConvNeXt-Tiny**, and **RETFound** on WBCBench 2026 (13 classes, seeds **42, 1, 7**) and external PBC and Raabin-WBC datasets. External evaluations use **frozen WBCBench-selected checkpoints**: no external-data fine-tuning, recalibration, or checkpoint selection.
+
+**Version note:** This documentation is prepared for a **proposed v1.1 release** containing the corrected external RETFound evaluation, audited external results, BNE+SNE sensitivity, the Raabin-WBC TestB supplementary analysis, and per-class results for Reviewer 1.11. The repository's publicly accessible files and release assets have **not** been independently verified. Do **not** claim that the v1.1 files are public until they have been committed/tagged and the release has been published.
+
+- Repository: https://github.com/sara-altun/WBC-Transfer-Evaluation
+- Historical release: https://github.com/sara-altun/WBC-Transfer-Evaluation/releases/tag/v1.0
+- Proposed revised release (after publication): https://github.com/sara-altun/WBC-Transfer-Evaluation/releases/tag/v1.1
+
+## 1. Datasets and access
+
+Download the datasets from their respective publishers; **raw images are not included** in this repository.
+
+| Dataset | Original source | Use in the manuscript |
+|---|---|---|
+| **WBCBench 2026** | [Xin-Tian/wbcbench2026, Hugging Face](https://huggingface.co/datasets/Xin-Tian/wbcbench2026) | `phase2_train`, `phase2_eval`, and locked `phase2_test`; 13-class primary task, plus matched 5-class sensitivity |
+| **PBC** | [Acevedo et al., Mendeley Data](https://data.mendeley.com/datasets/snkd93bnjr/1) | External five-class evaluation (10,298 readable images in the selected folders) |
+| **Raabin-WBC** | [Official Raabin-WBC site](https://raabindata.com/free-data/) | `Train` (10,175) + `TestA` (4,339), five-class external evaluation; `TestB` evaluated separately |
+
+The local WBCBench test set contains **32,934 image entries**, including pristine/degraded counterpart images. Its matched five-class subset includes **29,610 entries**. WBCBench split/group identifiers must not automatically be interpreted as proof of person-level independence. The specific historical WBCBench download revision should be archived or recorded separately, because label revisions can affect comparability.
+
+The PBC candidate set included one unreadable image; the audited evaluation included 10,298 readable images, not 10,299 candidates. The separate Raabin-WBC **TestB** subset has **2,119 readable images (LY = 148, N = 1,971)**, with no BA, EO, or MO labels in the evaluated two-class subset. **TestB is not part of the five-class Train+TestA Macro-F1 result.** Its analysis tests a different, narrower task under distinct acquisition conditions.
+
+Dataset citations and use restrictions remain those of the original publishers. The repository's code licence does not grant permission to redistribute third-party images or model weights.
+
+## 2. Study protocol and class mapping
+
+- **Models:** ImageNet-pretrained ResNet-50 and ConvNeXt-Tiny; retinal-CFP-pretrained RETFound, fully fine-tuned on WBCBench. These are comparisons of **model configurations**, not a causal isolation of pretraining source.
+- **Seeds:** 42, 1, 7; checkpoint choice based on WBCBench validation Macro-F1 only.
+- **Primary external task:** BA (basophil), EO (eosinophil), LY (lymphocyte), MO (monocyte), N (neutrophil). The five-class decision uses the corresponding BA, EO, LY, MO, SNE output scores of the 13-class models.
+- **BNE+SNE sensitivity:** For the N decision score, combine the **band neutrophil (BNE)** and **segmented neutrophil (SNE)** probabilities; retain the other four scores.
+- **RETFound correction:** Historical external predictions produced with a mismatched pooling configuration are **superseded**. Re-evaluation uses the trained RETFound `global_pool=True` architecture and matching final fine-tuned checkpoint parameters. The weights were not retrained for this correction.
+- **Uncertainty:** External pairwise 95% intervals use 1,500 class-stratified, paired **image-level** bootstrap resamples, with the three-seed average difference as the statistic. They are **not** film- or patient-cluster intervals.
+- **TestB interpretation:** Five-way LY/N recall is derived from the original five-output rule; *conditional two-class Macro-F1* is calculated only when the decision is restricted to LY and N. These are **different estimands**. Neither is directly comparable with the five-class Train+TestA Macro-F1.
+
+## 3. Suggested local folder layout
+
+These paths describe the **input/output layout expected by the notebooks**, not a claim that all folders are present in the public repository.
+
+```text
+WBC-Transfer-Evaluation/                       # local project root (formerly sci5-wbc)
+├── README.md
+├── LICENSE                                     # only if the chosen licence is confirmed
+├── requirements.txt                            # environment specification; verify versions
+├── RETFound/                                   # compatible upstream RETFound source
+├── wbc_project/data/processed/
+│   ├── phase2_train/<class>/...
+│   ├── phase2_eval/<class>/...
+│   └── phase2_test/<class>/...
+├── data/external/
+│   ├── PBC_dataset_normal_DIB/<class>/...
+│   └── Raabin_WBC/
+│       ├── Train/...
+│       ├── TestA/...
+│       └── TestB/{LY,N}/...
+├── outputs/
+│   ├── final/<model>/seed<seed>/<checkpoint>.pt
+│   ├── final_test_v2/<model>/seed<seed>/{true.npy,pred.npy,probabilities.npy,DONE.json}
+│   └── asama18_verified_v13/                  # table / figure exports
+├── review_results_external_BNE_SNE_v6/       # CNN predictions
+├── review_results_ret_found_only_v10/        # corrected RETFound predictions
+├── review_results_external_consistency_v13/  # audit / bootstrap
+├── review_results_raabin_testb_v1/           # independent TestB analysis
+└── review_results_external_per_class_v14/    # external per-class analysis
+```
+
+**Important:** External input arrays must be aligned **sample by sample** to the original manifest; never reorder a `pred.npy` array without applying the identical order to `true.npy` and the corresponding paths. The audit notebooks check consistency. Preserve the original dataset split and sample order, and review generated error/issue CSVs before using any table.
+
+## 4. Running the analysis: order and expected artifacts
+
+The exact filenames below reflect the corrected local research workflow. **Before publishing v1.1, ensure every advertised notebook and its imports/supporting source files are committed at the v1.1 tag.** Notebooks working against locally saved predictions are not full from-scratch reproductions of model training.
+
+| Order | Notebook / script | Purpose | Main output |
+|---|---|---|---|
+| 1 | Original WBCBench training notebooks, including the RETFound seed-42 resume and seeds-1/7 training notebooks | Train/checkpoint models; skip when using provided predictions | `outputs/final/` |
+| 2 | `WBCBench_2026_Asama12_v2_Final_Test_Hizli_Progress.ipynb` | Locked WBCBench 13-class evaluation | `outputs/final_test_v2/` |
+| 3 | `WBC_External_BNE_SNE_V6_Tam_Analiz.ipynb` | CNN external prediction exports | `review_results_external_BNE_SNE_v6/` |
+| 4 | `WBC_RETFound_Only_V10_Dosya_Yollarina_Gore.ipynb` | Corrected RETFound PBC and Raabin Train+TestA prediction exports | `review_results_ret_found_only_v10/` |
+| 5 | `WBC_External_V13_Duzeltilmis_Gecerli_Goruntu_Kontrolu.ipynb` | Audit 18 external model–seed–dataset records and recalculate paired intervals | `review_results_external_consistency_v13/` |
+| 6 | `WBC_External_PerClass_V14_Reviewer111_CPU_Only.ipynb` | Five-class per-class recall / precision / F1 and corrected confusion matrices | `review_results_external_per_class_v14/` |
+| 7 | `Raabin_TestB_Label_Audit_and_2Class_Evaluation_V2_FIXED.ipynb` | Audit TestB labels and, optionally, infer using trained checkpoints | `review_results_raabin_testb_v1/` |
+| 8 | `Asama18_Manuscript_Tables_Figures_V2_Verified.ipynb` | Generate tables and main figures from retained results | `outputs/asama18_verified_v13/` |
+
+**Optional WBCBench replay:** `RETFound_WBCBench_V12_Tam_Dogrulama.ipynb` compares saved predictions with a full replay of all three RETFound seeds. The full replay differed in **9 of 98,802** class decisions. This is a near match, **not** strict bitwise/`PASS_FULL` agreement; do not misrepresent it as such.
+
+### Minimum outputs to preserve for reviewer reproducibility
+
+**Summary-level CSVs** (not a substitute for sample-level predictions):
+
+- **V13:** `external_consistency_decision_v13.json`, `external_per_seed_verified_v13.csv`, `external_model_summary_verified_v13.csv`, `external_corrected_seed_average_bootstrap_v13.csv`, `external_audit_issues_v13.csv`.
+- **V14:** `external_class_decision_v14.json`, `external_class_per_seed_v14.csv`, `external_class_all_5class_summary_v14.csv`, `external_confusion_5x5_mean_v14.csv`, `external_confusion_5x5_per_seed_v14.csv`, `reviewer_1_11_EO_MO_LY_recall_F1_v14.csv`.
+- **TestB:** `testb_preflight_v1.json`, `raabin_train_testa_split_counts_v1.csv`, `testb_two_class_sensitivity_per_seed_v1.csv`, `testb_two_class_sensitivity_summary_v1.csv`, `testb_lymph_neut_recall_v1.csv`, `testb_2x5_confusion_v1.csv`, `testb_inference_issues_v1.csv`.
+
+**Sample-level predictions**, if described in the published paper as available: include the image-order manifest (de-identified relative paths or stable non-sensitive IDs), aligned true labels, model/seed prediction arrays (or a tidy CSV with `sample_id`, `dataset`, `model`, `seed`, `true_class`, `predicted_class`), and the evaluation method. Probability arrays may additionally be shared when licensing/privacy constraints permit. **A class-summary CSV alone is not a sample-level prediction export.** Do not expose local absolute paths, names/patient identifiers, personal data, secret tokens, raw images, or prohibited third-party materials.
+
+Files larger than GitHub's ordinary repository limits can be hosted as **release assets** or via a suitable archival service, with checksums and links in the README. Release assets do not change the Git source snapshot.
+
+## 5. Reference results from corrected local analysis
+
+These values were calculated from the **locally audited** records; they are *not a claim* that a given GitHub release presently contains the corresponding inputs.
+
+### Primary external five-class Macro-F1 (three-seed means)
+
+| Dataset | Model | Baseline | BNE+SNE |
+|---|---|---:|---:|
+| PBC | ConvNeXt-Tiny | **0.9650** | 0.9628 |
+| PBC | ResNet-50 | 0.9255 | 0.9241 |
+| PBC | RETFound (corrected) | 0.8734 | 0.8729 |
+| Raabin-WBC (Train + TestA) | ConvNeXt-Tiny | **0.7076** | 0.7036 |
+| Raabin-WBC (Train + TestA) | ResNet-50 | 0.6209 | 0.6135 |
+| Raabin-WBC (Train + TestA) | RETFound (corrected) | 0.4408 | 0.4409 |
+
+### Reviewer 1.11: external class-specific recall
+
+| Dataset | Model | EO recall | MO recall | LY recall |
+|---|---|---:|---:|---:|
+| PBC | ConvNeXt-Tiny | 98.37% | 89.58% | 99.20% |
+| PBC | ResNet-50 | 98.08% | 68.10% | 99.51% |
+| PBC | RETFound | 89.83% | 57.28% | 96.21% |
+| Raabin-WBC Train+TestA | ConvNeXt-Tiny | 41.46% | 59.79% | 93.68% |
+| Raabin-WBC Train+TestA | ResNet-50 | 17.29% | 47.21% | 84.32% |
+| Raabin-WBC Train+TestA | RETFound | 4.28% | 4.82% | 99.64% |
+
+The corrected RETFound confusion matrices show that **70.0% of EO** and **89.5% of MO** Raabin Train+TestA images were predicted as LY, compared with substantially higher EO/MO recall on PBC. This is a descriptive result and does not isolate acquisition, stain, or cohort effects.
+
+### Raabin-WBC TestB: separate sensitivity experiment
+
+| Model | Five-way LY recall | Five-way N recall | Conditional two-class Macro-F1 |
+|---|---:|---:|---:|
+| ConvNeXt-Tiny | 90.77% | 88.14% | 0.8794 |
+| ResNet-50 | 91.44% | 87.62% | **0.8913** |
+| RETFound | **96.62%** | 83.87% | 0.7193 |
+
+The conditional two-class result **cannot** be substituted into or directly compared with the main five-class Macro-F1 ranking. The baseline values above use the five-output rule; a separate BNE+SNE sensitivity is included in the TestB CSVs.
+
+## 6. Environment and reproducibility limits
+
+The local workflow uses Python, Jupyter, NumPy, pandas, scikit-learn, matplotlib, Pillow, and PyTorch/torchvision, together with a compatible RETFound implementation and `timm`. **Training and inference may require different compatible environments.** Do not treat a minimal table-generation `requirements.txt` as proof that RETFound fine-tuning can be reproduced with those dependencies alone. Publish and check the exact package versions, checkpoint format, and compatible upstream RETFound commit when possible.
+
+For inspecting precomputed CSVs and generating figures (no GPU):
+
+```bash
+python -m pip install numpy pandas scikit-learn matplotlib pillow jupyter
+jupyter notebook
+```
+
+This command is **not** a validated environment for all training/inference notebooks. Dataset downloads, fixed checkpoints, class mappings and file manifests remain necessary for independent full reproduction. External V13 auditing validates saved predictions; it does not prove that every checkpoint can be rerun identically in every software environment.
+
+## 7. Publish a correct v1.1 release
+
+**GitHub tag and source snapshot:** A GitHub release is linked to a **Git tag pointing at a specific commit**. GitHub's automatically generated *Source code (zip/tar.gz)* contains the repository files **at that tag**. Uploading `*.ipynb` or `*.csv` as **release assets** only adds downloadable attachments; it does **not** add files to the repository or update its tagged source-code archive.
+
+1. Upload/update `README.md`, `requirements.txt`, `LICENSE` (after confirming your intended licence), notebooks, helper modules and any shareable result CSVs **in the repository**. Commit the changes to your intended branch.
+2. Confirm that the repository file list and paths match this README. Run the released notebooks using the documented requirements and data layout, and remove private execution outputs/paths.
+3. Go to **Releases → Draft a new release**. Create/select tag **`v1.1`** on the **commit containing the corrected files**, rather than reusing the older v1.0 tag.
+4. Optionally add bigger prediction archives or supplementary outputs as downloadable **release assets**, with a manifest and checksums. A published *immutable release* may not allow later changes to its assets or tag; assemble the complete draft first.
+5. Publish the release. Verify **Source code (zip)** includes the new `README.md`, notebooks, `requirements.txt` and licence, and that any declared release assets are downloadable.
+6. **Only after publication and verification**, update manuscript *Code Availability*, *Data Availability* and the reviewer response to point to `https://github.com/sara-altun/WBC-Transfer-Evaluation/releases/tag/v1.1`. Do not cite a future/empty release as already public.
+
+GitHub references: [About releases](https://docs.github.com/en/repositories/releasing-projects-on-github/about-releases), [Managing releases](https://docs.github.com/en/repositories/releasing-projects-on-github/managing-releases-in-a-repository).
+
+## 8. Licence and acknowledgments
+
+Third-party data, external pretrained weights and third-party implementations remain subject to their respective terms. The optional repository `LICENSE` applies only to author-owned material where the author has rights to license it; do not replace an existing licence without reviewing its terms.
+
+AI-assisted code-checking/debugging is disclosed in the corresponding manuscript according to journal requirements. All analyses, dataset use, publication statements, and research conclusions remain the author's responsibility.
+
+**Maintainer:** Sara Altun Güven.
